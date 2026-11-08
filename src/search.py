@@ -1,10 +1,6 @@
-"""
-search：文字 → 向量 → LanceDB 检索 → HTML 结果页（在线查询）
+"""文字检索：把查询编码成向量，在 LanceDB 中取 top-k，生成 HTML 结果页。
 
-用法：
-    python src/search.py "a rainy street" "a dog"
-
-不传参数时用默认的一组查询。
+用法：python src/search.py [查询词 ...]
 """
 
 import os
@@ -26,6 +22,11 @@ DEFAULT_QUERIES = ["a dog", "a mountain", "a person", "water", "a city street"]
 TOP_K = 8
 
 
+def to_cosine(distance: float) -> float:
+    # LanceDB 返回的 _distance 是 L2 距离的平方；单位向量下 d² = 2 - 2cos
+    return 1 - distance / 2
+
+
 def main():
     queries = sys.argv[1:] or DEFAULT_QUERIES
 
@@ -42,31 +43,28 @@ def main():
     for q in queries:
         with torch.no_grad():
             t = model.encode_text(tokenizer([q]))
-            t = t / t.norm(dim=-1, keepdim=True)      # 文本也要归一化，才能和图片向量比
+            t = t / t.norm(dim=-1, keepdim=True)  # 文本同样要单位化
         v = t.numpy()[0].astype("float32").tolist()
 
         rows = table.search(v).limit(TOP_K).to_list()
+        print(f"  {q:<22} top1 cos = {to_cosine(rows[0]['_distance']):.3f}")
 
         cards = []
         for rank, r in enumerate(rows, 1):
-            # LanceDB 的 _distance 是「L2 距离的平方」，已经就是 d²
-            # 单位向量下 d² = 2 - 2cos，所以 cos = 1 - d²/2 = 1 - _distance/2
-            cos = 1 - r["_distance"] / 2
             rel = Path(r["path"]).relative_to(ROOT).as_posix()
             cards.append(
                 f'<figure class="card">'
                 f'<img src="{rel}" alt="">'
-                f'<figcaption><b>#{rank}</b> cos {cos:.3f}</figcaption>'
+                f'<figcaption><b>#{rank}</b> cos {to_cosine(r["_distance"]):.3f}</figcaption>'
                 f'</figure>'
             )
         sections.append(
             f'<section><h2>{q}</h2><div class="grid">{"".join(cards)}</div></section>'
         )
-        print(f"  {q:<22} 前 1 名 cos = {1 - rows[0]['_distance'] / 2:.3f}")
 
     page = f"""<!doctype html>
 <html lang="zh"><head><meta charset="utf-8">
-<title>CLIP 向量检索结果</title>
+<title>CLIP 检索结果</title>
 <style>
   body {{ font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif;
          margin: 0; padding: 32px; background: #fafafa; color: #171717; }}
@@ -82,13 +80,13 @@ def main():
   figcaption b {{ color: #02743B; }}
 </style></head><body>
 <h1>CLIP 向量检索 · {table.count_rows()} 张图</h1>
-<div class="sub">每张图 = 512 维向量；每句话 = 512 维向量；比谁方向更接近</div>
+<div class="sub">512 维图文向量，按余弦相似度排序</div>
 {"".join(sections)}
 </body></html>
 """
 
     OUT_HTML.write_text(page, encoding="utf-8")
-    print(f"\n结果页已生成：{OUT_HTML}")
+    print(f"结果页：{OUT_HTML}")
 
 
 if __name__ == "__main__":
