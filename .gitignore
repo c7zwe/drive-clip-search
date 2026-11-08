@@ -1,0 +1,12 @@
+# 生成物
+data/
+result.html
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 系统
+.DS_Store
+Thumbs.db

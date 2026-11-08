@@ -1,0 +1,20 @@
+# --- 数据处理 ---
+polars
+pyarrow
+duckdb
+numpy
+
+# --- 并行 ---
+ray
+
+# --- 向量检索 ---
+# torch 建议装 CPU 版，体积小一半：
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+open_clip_torch
+lancedb
+
+# --- 其他 ---
+pillow
+requests
